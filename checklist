@@ -1,0 +1,65 @@
+I plan to continue with/expand significantly on the scene I have developed on 
+the previous assignments. Currently I have a basic scene of wind turbines 
+spinning at uniform rates. 
+
+To expand on this, I want to be able to let the user control the wind speed and
+see the result of this change through the change in spin speed of the turbines.
+I'll scale the max spin speed relative to the size of the windmill and handle 
+turning off/on the windmills if the wind speed reaches dangerous levels or become
+to light for the windmills to generate power. Still brainstorming ideas, but I intend
+to demo the energy being produced through the turbines by either a series of lights 
+growing brighter/dimmer, or a small town being lit. I'm open to suggestions on this,
+but I want a way to see how the wind speed affects all of this. Maybe users can add 
+windmills to see the effect?
+
+To expand on the scene, I'll maybe add moving cars, trees or other things to populate 
+the area. Mostly just to give it a more full appearance. 
+
+Stretch Goals:
+
+*Terrain map with some turbines located on hills. Maybe wind higher at greater elevation?
+
+*Can find details on wind turbines online, and find a good way to present information to 
+the user about different model turbines? (Power, size, max speeds, weight, etc.)
+
+- Then maybe different models will perform differently in similar wind conditions
+
+*Open to other suggestions? Seems it would be fairly simple to add complexity to this project
+	eg. Show airflow as particles, etc.
+
+
+*To Do*
+
+Wind Turbines
+-	Move Lighting calls to it's own init function
+-	Can texturing be refactored to it's own function?
+-	Change shape of windmill blades
+-	Add windmill blade feathering functionality
+-	Change Gearbox to rounded cylinder shape
+-	Turbines rotate y axis dependant on wind direction/user input
+-	Rotation speed of wings is relative to wind speed
+-	To high speed invokes feathering functionality
+-	Energy of each turbine needs to be managed
+		- Structure for each turbine with energy attributes 	
+	Stretch:
+		-	User places turbines
+		-	Direction placed has effect on energy produces (normal of windflow?)
+		-	Include different models of turbines and their max energy outputs
+Air
+-	Add visibility of airflow through scene - Fog Perhaps?
+-	User has control over wind speed / direction
+-	Click and drag to create wind source (length of drag)
+
+Energy Brainstorming
+-	Perhaps on user click of turbine, display current energy being produced
+-	Display totals to user on sidebar, broken down by each turbine
+-	Demo energy being stored and consumed by power source (Light, etc.)
+
+Scene
+-	Add skybox
+-	Add moving traffic/foliage, etc. to fill scene
+-	Add terrain map, if we can get to it, this will affect wind speed
+
+Light
+-	Sun source? Maybe moves slowly? 
+-	Incorporate shadows into scene - turbines first and foremost
