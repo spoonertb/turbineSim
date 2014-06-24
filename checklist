@@ -59,6 +59,7 @@ Scene
 -	Add skybox
 -	Add moving traffic/foliage, etc. to fill scene
 -	Add terrain map, if we can get to it, this will affect wind speed
+-   Small town/lights that are initially not lit, change on energy available
 
 Light
 -	Sun source? Maybe moves slowly? 
