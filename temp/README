@@ -1,0 +1,27 @@
+Build the executable running: make
+Clean the files using: make clean
+
+Execute the program using: ./turbine
+
+Controls: 
+
+Camera: Click and hold left mouse and drag around.
+
+Increase Wind: Page up, page down
+Change wind direction: Home/End Buttons
++/- Buttons: Change FOV of scene
+Escape: Close App
+
+Lighting controls from the third assignment can still be implemented here
+Was unable to get to model import for foliage done in time.
+
+** Also. Feathering functionality is there, but it doesnt transition nicely.
+	Its and instant rotation around the blade y-axis. Not enough time to get 
+	a good looking animation going
+
+Note: The energy outputs are based on real energy outputs of a wind turbine
+	of a given radius, wind speed, and air pressure
+
+The particle system is based on an example by Robert Bateman given in C++
+His code was modified to C code and changed around to work with my wind model
+His info still exists in Frametimer.h

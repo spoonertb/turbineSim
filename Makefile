@@ -1,5 +1,5 @@
 #  List of all programs you want to build
-EX= lighting
+EX= turbine
 
 #  Libraries - Linux and various flavors of Unix
 LIBS=-lglut -lGLU -lGL -lm
@@ -22,14 +22,14 @@ all: $(EX)
 	gcc -c -O -Wall $<
 
 #  Generic compile and link
-%: %.c CSCIx229.a
+%: %.c CSCIx229.a 
 	gcc -Wall -O3 -o $@ $^ $(LIBS)
 
 #  Delete unwanted files
 clean:;$(CLEAN)
 
 #  Create archive (include glWindowPos here if you need it)
-CSCIx229.a:fatal.o loadtexbmp.o print.o project.o errcheck.o object.o
+CSCIx229.a:fatal.o loadtexbmp.o print.o project.o errcheck.o object.o FrameTimer.o
 	ar -rcs CSCIx229.a $^
 
 #  SDL version of ex20

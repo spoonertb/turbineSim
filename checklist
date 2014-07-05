@@ -31,24 +31,17 @@ the user about different model turbines? (Power, size, max speeds, weight, etc.)
 *To Do*
 
 Wind Turbines
--	Move Lighting calls to it's own init function
--	Can texturing be refactored to it's own function?
--	Change shape of windmill blades
 -	Add windmill blade feathering functionality
--	Change Gearbox to rounded cylinder shape
--	Turbines rotate y axis dependant on wind direction/user input
+
 -	Rotation speed of wings is relative to wind speed
--	To high speed invokes feathering functionality
+		: IP : speed functionality created
+		
+-	Too high speed invokes feathering functionality
 -	Energy of each turbine needs to be managed
 		- Structure for each turbine with energy attributes 	
+
 	Stretch:
-		-	User places turbines
-		-	Direction placed has effect on energy produces (normal of windflow?)
-		-	Include different models of turbines and their max energy outputs
-Air
--	Add visibility of airflow through scene - Fog Perhaps?
--	User has control over wind speed / direction
--	Click and drag to create wind source (length of drag)
+		-	Include different models of turbines and their max energy outputs b
 
 Energy Brainstorming
 -	Perhaps on user click of turbine, display current energy being produced
@@ -56,11 +49,9 @@ Energy Brainstorming
 -	Demo energy being stored and consumed by power source (Light, etc.)
 
 Scene
--	Add skybox
 -	Add moving traffic/foliage, etc. to fill scene
 -	Add terrain map, if we can get to it, this will affect wind speed
 -   Small town/lights that are initially not lit, change on energy available
 
 Light
--	Sun source? Maybe moves slowly? 
 -	Incorporate shadows into scene - turbines first and foremost

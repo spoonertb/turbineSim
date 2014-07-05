@@ -16,10 +16,23 @@
 #endif
 
 #include "CSCIx229.h"
+#include "FrameTimer.h"
 
 #define cylAngle atan(radius2/height);
 
+int obj;
+
 unsigned int texture[3];
+unsigned int sky[6];
+unsigned int testSky;
+
+#define NUM_TURBINES 9
+#define MAX_TURBINES 9
+int wind = 0;
+
+int thetaWind = 0;
+double speedWind = 0;
+int windChange = 0;
 
 int th=0;         //  Azimuth of view angle
 int ph=15;
@@ -28,11 +41,13 @@ int axes = 0;
 int moveLight = 1;
 int texmode = 0;
 int mode = 1;
-int fov = 55;
+int fov = 40;
+int box = 1;
 double asp = 1;
 double dim = 5;    //Size of world
-double zoom = 1;
+double zoom = .8;
 double rot[10];
+int fanDir = 0;
 
 //Light Values
 int move = 1;         //Move light
@@ -44,13 +59,223 @@ int specular = 0;     //Specular Intensity
 int shininess = 0;    //Shininess (Power of two)
 float shinyvec[1];    //Shininess (Value)
 int zht   = 90;        //Light azimuth
-float ylight = 2;     //Elevation of light
+float ylight = 7;     //Elevation of light
 
 int one  = 1;         //Unit value
-int distance = 7;     //Light Distance
+int distance = 10;     //Light Distance
 int inc = 10;         //Ball Increment
 int smooth = 1;       //Smooth/Flat Shading
 int local   = 0;      //Local viewer model
+
+double spin = 0.0;
+double speed = 0.0;
+
+#define Dfloor 7.5
+#define Yfloor 0.0001
+float N[] = {0, -1, 0};
+float E[] = {0, Yfloor, 0};
+
+//---------------------- Fog Attributes ------------------------------
+
+/// the colour of the fog and the clear colour.
+float  fog_colour[] = {0.6f,0.58f,0.79f,0.0f};
+
+/// the density of the fog
+float  fog_density  = 0.02f;
+
+/// The fog mode, either GL_LINEAR, GL_EXP or GL_EXP2
+GLenum fog_mode     = GL_EXP2;
+
+/// the far distance of the fog & camera
+float far_distance  = 10.0f;
+
+/// the near distance of the fog & camera
+float near_distance = 0.05f;
+
+//----------------------Camera Attrs----------------------------------
+float zoom2 = 15.0f;
+float rotx = 15;
+float roty = 0.0;
+float tx = 0;
+float ty = 0;
+int lastx = 0;
+int lasty = 0;
+unsigned char Buttons[3] = {0};
+//double energyOutput;
+//--------------------------------------------------------------------
+
+struct turbines {
+   //Placement in xyz space
+   double x;
+   double y;
+   double z;
+
+   double size;
+
+   double fanSpeed;
+   double thetaBlades;
+   int yRot;
+   int shutdown;
+   // 1 value = brake on fan
+
+   double energyOutput;
+};
+
+struct turbines turbine[MAX_TURBINES];
+
+/// a structure to hold a particle
+struct Particle {
+
+   /// the current particle position
+   float position[3];
+
+   /// the direction of the particle
+   float direction[3];
+
+   float color[3];
+
+   /// the lifespan
+   float life;
+
+   /// pointer to the next particle
+   struct Particle* next;
+};
+
+typedef struct Particle Object;
+
+Object* Particle_new();
+
+Object* Particle_new() {
+   Object* p = malloc(sizeof(Object));
+   p->position[0] = (float) (rand() % 16);
+   p->position[2] = 0;
+   p->position[1] = 3.0f;
+
+   p->direction[0] = (10000 - rand()%20000)/10000.0f;
+   p->direction[1] = (10000 - rand()%20000)/10000.0f;
+   p->direction[2] = (10000 - rand()%20000)/10000.0f; 
+
+   p->color[0] = 0.8f;
+   p->color[1] = rand() % 15000/20000.0f;
+   p->color[2] = 0.1f;
+
+   p->life         = rand()%10000/1000.0f;   
+   return p;
+}
+
+void ShadowProjection(float L[4], float E[4], float N[4])
+{
+   float mat[16];
+   float e = E[0]*N[0] + E[1]*N[1] + E[2]*N[2];
+   float l = L[0]*N[0] + L[1]*N[1] + L[2]*N[2];
+   float c = e - l;
+   //  Create the matrix.
+   mat[0] = N[0]*L[0]+c; mat[4] = N[1]*L[0];   mat[8]  = N[2]*L[0];   mat[12] = -e*L[0];
+   mat[1] = N[0]*L[1];   mat[5] = N[1]*L[1]+c; mat[9]  = N[2]*L[1];   mat[13] = -e*L[1];
+   mat[2] = N[0]*L[2];   mat[6] = N[1]*L[2];   mat[10] = N[2]*L[2]+c; mat[14] = -e*L[2];
+   mat[3] = N[0];        mat[7] = N[1];        mat[11] = N[2];        mat[15] = -l;
+   //  Multiply modelview matrix
+   glMultMatrixf(mat);
+}
+
+/// the first particle in the linked list
+struct Particle* pList;
+
+void NewParticle() {
+
+   // create new particle and add as first in list
+   Object* p = Particle_new();
+
+   p->next = pList;
+   pList = p;
+}
+
+void UpdateParticles(float dt) {
+
+   // traverse all particles and update
+   Object* p = pList;
+   while(p) {
+      // decrease lifespan
+      p->life -= dt;
+
+      // apply gravity
+      p->direction[1] -= 9.81f*dt;
+
+      // modify position
+      p->position[0] += dt * p->direction[0];
+      p->position[1] += 0.5 * dt * p->direction[1];
+      p->position[2] += 0.5 * dt * p->direction[2];
+
+      // goto next particle
+      p=p->next;
+   }
+}
+
+void RemoveDeadParticles() {
+
+   // iterate over particles
+   Object* curr = pList;
+   Object* prev = 0;
+
+   while (curr) {
+
+      // if dead
+      if (curr->life<0) {
+
+         // update the previous pointer to skip over the curr 
+         // particle, or just remove the particle if it's the 
+         // first in the list that we need to remove.
+         //
+         if (prev) {
+            prev->next = curr->next;
+         }
+         else {
+            pList = curr->next;
+         }
+
+         // take temporary reference
+         Object* temp = curr;
+
+         // skip over particle in list
+         curr = curr->next;
+
+         // delete particle
+         free(temp);
+      }
+      else {
+         // move to next if not removing
+         prev = curr;
+         curr = curr->next;
+      }
+   }
+}
+
+void DrawParticles() {
+   glPushMatrix();
+   // iterate over all particles and draw a point
+   Object* curr = pList;
+   glTranslatef(-8, 0, 18);
+   glRotatef(90, 1, 0, 0);
+   glPointSize(2);
+   glBegin(GL_POINTS);
+   //glColor3f(1, 0, 0);
+   while (curr) {
+      glColor3fv(curr->color);
+      glVertex3fv(curr->position);
+      curr = curr->next;
+   }
+   glEnd();
+   glPopMatrix();
+}
+
+
+
+
+/// the rotation of the teapot
+double g_Rotation=0;
+
+void OnExit() {
+}
 
 /*
  *  Convenience routine to output raster text
@@ -84,7 +309,7 @@ static void Vertex(double th,double ph)
    glTexCoord2f(th/360, ph/180 +.5);
    glVertex3d(x,y,z);
 }
-
+/*
 static void Vertex2(double th,double ph, int dir)
 {
    double x = Sin(th)*Cos(ph);
@@ -98,7 +323,7 @@ static void Vertex2(double th,double ph, int dir)
    glTexCoord2f(th/360, ph/180 +.5);
    glVertex3d(x, y, z);
 }
-
+*/
 static void ball(double x, double y, double z, double r)
 {
    int th, ph;
@@ -136,7 +361,7 @@ static void ball(double x, double y, double z, double r)
 
 static void drawCylinderFinal(double radius1, double radius2, double height, double x, double y, double z)
 {
-   const int d = 1;
+   const int d = 5;
    int th;
    double dRad = radius2 - radius1;
    double length = sqrt(dRad * dRad + height * height);
@@ -158,7 +383,7 @@ static void drawCylinderFinal(double radius1, double radius2, double height, dou
    glBindTexture(GL_TEXTURE_2D,texture[2]);
 
    glBegin(GL_QUAD_STRIP);
-      for(th = 0; th < 360; th+=d) {
+      for(th = 0; th <= 360; th+=d) {
          glNormal3f(Cos(th), yNormal, Sin(th));
          glTexCoord2f(1 - th /360, 0); glVertex3f(radius2 * Cos(th), 0, radius2 * Sin(th));
          glTexCoord2f(th/360, 1); glVertex3f((radius2 - dRad) * Cos(th), height, (radius2 - dRad) * Sin(th));
@@ -173,7 +398,7 @@ static void drawCylinderFinal(double radius1, double radius2, double height, dou
 
 // Used in angled cylinders
 
-
+/*
 // Cylinders on the dish use this for the pitch yaw and roll settings
 static void drawCylinder2(double radius1, double radius2, double height, double x, double y, double z, 
                            double pitch, double yaw, double roll)
@@ -226,6 +451,7 @@ static void drawCylinder2(double radius1, double radius2, double height, double 
    glDisable(GL_TEXTURE_2D);
    glPopMatrix();
 }
+*/
 
 static void drawRing(double x, double y, double z, double r1,
                      double r2,double h, double p, double r, double yaw)
@@ -281,20 +507,11 @@ static void drawRing(double x, double y, double z, double r1,
    }
    glEnd();     
 
-   ball(0,4.1,0, 3.1);
+   ball(0,4.1,0, 2.5);
  
-/*
-   glBegin(GL_QUAD_STRIP);
-   for (th=0;th<=360;th+=15)
-   {
-      glVertex3f(r2*Cos(th),0,r2*Sin(th));
-      glVertex3f(r2*Cos(th),h,r2*Sin(th));
-   }
-   glEnd();
-*/
    glPopMatrix();
 }      
-
+/*
 // Draw sphere taken from example code
 static void sphere2(double x,double y,double z,double r, 
    double pitch, double yaw, double roll)
@@ -328,130 +545,34 @@ static void sphere2(double x,double y,double z,double r,
    //  Undo transformations
    glPopMatrix();
 }
-
-// Draw a portion of a sphere from above -> leaves a dish shape, orient at an angle
-static void dish(double x,double y,double z,double r, 
-   double pitch, double yaw, double roll, int dir)
-{
-   const int d=5;
-   int th,ph;
-
-   //  Save transformation
-   glPushMatrix();
-
-   glTranslated(x, y, z);
-   //glTranslated(-3,12,3);
-   glRotatef(60.0, pitch, yaw, roll);
-
-   glEnable(GL_TEXTURE_2D);
-   glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,texmode?GL_REPLACE:GL_MODULATE);
-   glColor3f(1,1,1);
-   glBindTexture(GL_TEXTURE_2D,texture[2]);
-   //  Offset and scale
-   glScaled(r,r/1.5,r);
-   //  Latitude bands
-   for (ph=-90;ph<-30;ph+=d)
-   {
-      glBegin(GL_QUAD_STRIP);
-      for (th=0;th<=360;th+=d)
-      {
-         Vertex2(th,ph, dir);
-         Vertex2(th,ph+d, dir);
-      }
-      glEnd();
-   }
-   glDisable(GL_TEXTURE_2D);
-   //  Undo transformations
-   glPopMatrix();
-}
-
-// Draws the cylinders that make up the receiver structure of the dish. NOT PRETTY!
-static void drawReceiver(double x, double y, double z)
-{
-   glPushMatrix();
-   glTranslated(x, y, z); 
-
-   sphere2(0,0,0,1, 0,0,0);
-   glRotatef(60, 1, 0, 1);
-   glColor3f(1, 0, 0);
-   drawCylinder2(.15, .15, 7, x, y, z, 130, 20, 0);
-   glColor3f(0, 1, 0);
-   drawCylinder2(.15, .15, 7, x, y, z, 130, 140,0);
-   glColor3f(0, 0, 1);   
-   drawCylinder2(.15, .15, 7, x, y, z, 130, 260,0);
-   glPopMatrix();
-}
-
-//Invokes the receiver function as well as handles drawing 
-// of the dish mount structure
-static void drawDish(double x, double y, double z, double scale, 
-                     double angle)
-{  
-   glPushMatrix();
-   glTranslated(x, y, z);
-   glScaled(scale/2,scale/2, scale/2);
-
-   glRotatef(angle, 0, 1, 0);
-   //dish(0, 0, 0, 8, 1, 0, 1);
-   dish(-3.1, 12,3.1, 8, 1, 0, 1, 0);
-   dish(-3,12,3, 8, 1, 0, 1, 1);
-   //sphere2(-3,12,3, 8, 0,0,0);
-   drawCylinderFinal(0.02, 3, 2, 0, 0, 0);
-   drawCylinderFinal(0.5, 0.5, 8, 0, 0, 0); 
-   drawCylinderFinal(0.1, 0.5, .6, 0, 8, 0); 
-   glColor3f(1, 0, 0);
-   drawReceiver(-3.5, 12.5, 3.5);
-
-   glPopMatrix();
-}
-
+*/
 // Draws triangles that make up the blades of the wind turbine
 static void blade(double dx, double dy, double dz, double r, double base, double depth, double angle) {
    glPushMatrix();
-   glTranslated(dx, dy, dz);
+   //glTranslated(dx, dy, dz);
    glRotatef(angle, 0, 0, 1);
-   glScaled(base, r, depth);
-   glColor3f(0.12, 0.63, 0.9);
+   //glScaled(base, r, depth);
+   glScaled(1.2, 1.2, 1.2);
+   //glColor3f(0.12, 0.63, 0.9);
+   glColor3f(1,1,1);
+   glPushMatrix();
+   glRotatef(-90, 0, 1, 0);
+   glColor3f(1,1,1);
 
-   glBegin(GL_TRIANGLES);
-      //Base
-      glNormal3f(0, -1, 0);
-      glVertex3f( 0.5,-0.5, 0.5);
-      glVertex3f(-0.5,-0.5, 0.5);
-      glVertex3f( 0.0,-0.5, -0.5);
-   glEnd();
-      //Front
-   glBegin(GL_TRIANGLES);  
-      glNormal3f(0, 1, 1); 
-      glVertex3f( 0.5,-0.5, 0.5);
-      glVertex3f(-0.5,-0.5, 0.5);
-      glVertex3f( 0.0, 0.5, 0.0);
-   glEnd();
-   glBegin(GL_TRIANGLES);
-      //left
-      glNormal3f(-1, 1, -1);
-      glVertex3f(-0.5, -0.5, 0.5);
-      glVertex3f( 0.0, -0.5, -0.5);
-      glVertex3f( 0.0,  0.5, 0.0);
-   glEnd();
-   glBegin(GL_TRIANGLES);
-      //right
-      glNormal3f(1, 1, -1);
-      glVertex3f( 0.5, -0.5, 0.5);
-      glVertex3f( 0.0, -0.5, -0.5);
-      glVertex3f( 0.0,  0.5, 0.0);           
-   glEnd();    
-
+   glCallList(obj);
+   glPopMatrix();
    glPopMatrix();  
 }
 
 // Invokes draw blade function and handles rotation of the blades
-static void drawBlades(double dx, double dy, double dz, double r, double speed) {
+static void drawBlades(double dx, double dy, double dz, double r, double size, double speed) {
    glPushMatrix();
 
+   glColor3f(1,1,1);
    glTranslated(dx,dy, dz);
    //Blade rotation
-   glRotatef(zh * speed, 0, 0, 1);
+   glRotatef(spin * speed, 0, 0, 1);
+   glScaled(size, size, size);
 
    //Draw blades at angles of 120 degrees
    blade(0,25,0,    r, 2, 1, 0);
@@ -623,23 +744,97 @@ static void drawGround(double x, double y, double z, unsigned int texnum)
    glPopMatrix();
    glDisable(GL_TEXTURE_2D);
 }
-
-//Handles drawing of entire wind turbine system, from mount to fan
-static void drawFan(double x, double y, double z, double sizeratio,
-                     double radiusrat, double speedrat, double anglerot)
+/*
+static bladeModel(double x, double y, double z, double scale, double speed)
 {
    glPushMatrix();
    glTranslated(x, y, z);
-   glScaled(sizeratio, sizeratio, sizeratio);
-   glRotatef(anglerot, 0, 1, 0);
+   //glRotatef(90, 0, 1, 0);
+   glPushMatrix();
+   glRotatef(speed * spin, 1, 0, 0);
+   glScaled(scale, scale, scale);
+   glCallList(obj);
+   glPopMatrix();
+   glPopMatrix();
+}
+*/
+//Handles drawing of entire wind turbine system, from mount to fan
+static void drawFan(struct turbines turbine)
+{
+   glPushMatrix();
+   glTranslated(turbine.x, turbine.y, turbine.z);
+   glScaled(0.016, 0.016, 0.016);
+   glRotatef(turbine.yRot, 0, 1, 0);
 
    drawCylinderFinal(3, 7, 100, 0, 0, 0);
    cube(0, 100, -2, 4, 3.75, 10, 0, -1);
-   drawRing(0,100,8,3.5,3.5,5, 0,0,0);
-   drawBlades(0, 100, 12, 50, speedrat);
-
+   drawRing(0,100,8,3,3,5, 0,0,0);
+   glColor3f(1,1,1);
+   drawBlades(0, 100, 10, 50, turbine.size, 1 / (turbine.size));
+   //glRotatef(90, 0, 1, 0);
    glPopMatrix();
 }
+
+static void Sky(double D)
+{
+   glPushMatrix();
+   glColor3f(1,1,1);
+   glEnable(GL_TEXTURE_2D);
+   //glTranslatef(0, 0.5*D, 0);
+   //  Sides
+   glBindTexture(GL_TEXTURE_2D,testSky);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.0,0.34); glVertex3f(-D,-D,-D);
+   glTexCoord2f(0.25,0.34); glVertex3f(+D,-D,-D);
+   glTexCoord2f(0.25,0.66); glVertex3f(+D,+D,-D);
+   glTexCoord2f(0.0,0.66); glVertex3f(-D,+D,-D);
+   glEnd();
+
+   //glBindTexture(GL_TEXTURE_2D,sky[3]);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.25,0.34); glVertex3f(+D,-D,-D);
+   glTexCoord2f(0.5,0.34); glVertex3f(+D,-D,+D);
+   glTexCoord2f(0.5,0.66); glVertex3f(+D,+D,+D);
+   glTexCoord2f(0.25,0.66); glVertex3f(+D,+D,-D);
+   glEnd();
+
+   //glBindTexture(GL_TEXTURE_2D,sky[2]);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.5,0.34); glVertex3f(+D,-D,+D);
+   glTexCoord2f(0.75,0.34); glVertex3f(-D,-D,+D);
+   glTexCoord2f(0.75,0.66); glVertex3f(-D,+D,+D);
+   glTexCoord2f(0.5,0.66); glVertex3f(+D,+D,+D);
+   glEnd();
+
+   //glBindTexture(GL_TEXTURE_2D,sky[4]);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.75,0.34); glVertex3f(-D,-D,+D);
+   glTexCoord2f(1   ,0.34); glVertex3f(-D,-D,-D);
+   glTexCoord2f(1   ,0.66); glVertex3f(-D,+D,-D);
+   glTexCoord2f(0.75,0.66); glVertex3f(-D,+D,+D);
+   glEnd();
+
+   //  Top and bottom
+   //glBindTexture(GL_TEXTURE_2D,sky[0]);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.25,0.67); glVertex3f(+D,+D,-D);
+   glTexCoord2f(0.50,0.67); glVertex3f(+D,+D,+D);
+   glTexCoord2f(0.50,1); glVertex3f(-D,+D,+D);
+   glTexCoord2f(0.25,1); glVertex3f(-D,+D,-D);
+   glEnd();
+   glPopMatrix();
+
+//   glBindTexture(GL_TEXTURE_2D,sky[5]);
+   glBegin(GL_QUADS);
+   glTexCoord2f(0.25,0); glVertex3f(-D,-D,+D);
+   glTexCoord2f(0.5,0); glVertex3f(+D,-D,+D);
+   glTexCoord2f(0.5,0.34); glVertex3f(+D,-D,-D);
+   glTexCoord2f(0.25,0.34); glVertex3f(-D,-D,-D);
+   glEnd();
+
+   glDisable(GL_TEXTURE_2D);
+}
+
 
 /*
  *  OpenGL (GLUT) calls this routine to display the scene
@@ -648,7 +843,18 @@ void display()
 {
    const double len=4;  //  Length of axes
    //  Erase the window and the depth buffer
-   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+
+   // Set background color
+   glClearColor(fog_colour[0], fog_colour[1], fog_colour[2], fog_colour[3]);
+
+   // Set the fog attribs
+   glFogf(GL_FOG_START, near_distance);
+   glFogf(GL_FOG_END, far_distance);
+   glFogfv(GL_FOG_COLOR, fog_colour);
+   glFogi(GL_FOG_MODE, fog_mode);
+   glFogf(GL_FOG_DENSITY, fog_density);
+   glEnable(GL_FOG);
    //  Enable Z-buffering in OpenGL
    glEnable(GL_DEPTH_TEST);
    //  Undo previous transformations
@@ -656,32 +862,38 @@ void display()
 
    if (mode)
    {
-      double Ex = -2*dim*Sin(th)*Cos(ph);
-      double Ey = +2*dim *Sin(ph);
-      double Ez = +2*dim*Cos(th)*Cos(ph);
-      gluLookAt(Ex,Ey,Ez, 0,0,0, 0,Cos(ph),0);
+      //double Ex = -2*dim*Sin(th)*Cos(ph);
+      //double Ey = +2*dim *Sin(ph);
+      //double Ez = +2*dim*Cos(th)*Cos(ph);
+      //gluLookAt(Ex,Ey,Ez, 0,0,0, 0,Cos(ph),0);
+      double Ex = -2*dim*Sin(roty)*Cos(rotx);
+      double Ey = +2*dim *Sin(rotx);
+      double Ez = +2*dim*Cos(roty)*Cos(rotx);
+      gluLookAt(Ex,Ey,Ez, 0,0,0, 0,Cos(rotx),0);      
    }
    else 
    {
       //  Set view angle
       glRotatef(ph,1,0,0);
       glRotatef(th,0,1,0);
-
    }
+
+   if(box)
+      Sky(3*dim);
 
    glShadeModel(smooth ? GL_SMOOTH : GL_FLAT);
 
    // Light Switch
-   if(light) {
+//   if(light) {
       float Ambient[]   = {0.01 * ambient, 0.01 * ambient, 0.01 * ambient, 1.0};
       float Diffuse[]   = {0.01 * diffuse, 0.01 * diffuse, 0.01 * diffuse, 1.0};
       float Specular[]  = {0.01* specular, 0.01* specular, 0.01* specular, 1.0};
 
       //Light Position
-      float Position[]  = {distance * Cos(zht), ylight, distance * Sin(zht), 1.0};
+      float Position[]  = {distance * Cos(30), ylight, distance * Sin(30), 1.0};
 
       glColor3f(1,1,1);
-      ball(Position[0], Position[1] + 1, Position[2], 0.1);
+      ball(Position[0], Position[1] + 3, Position[2], 0.1);
 
       glEnable(GL_NORMALIZE);
 
@@ -699,36 +911,125 @@ void display()
       glLightfv(GL_LIGHT0, GL_DIFFUSE, Diffuse);
       glLightfv(GL_LIGHT0, GL_SPECULAR, Specular);
       glLightfv(GL_LIGHT0, GL_POSITION, Position);
-   }
-   else
-      glDisable(GL_LIGHTING);
+ //  }
+ //  else
+ //     glDisable(GL_LIGHTING);
 
-   //blade(0,0,0, 2,1,0.5, 0);
+ //  glBegin(GL_QUADS);
+//   glColor3f(0,0,0);
+ //  glVertex
 
-   //drawGround(250, 10, 250, 0);
-   drawGround(4, 0.1, 4, 0);
-   //cube(0,0,0, 250,10,250, 0, 0);
-   //cube(0,1,0, 1,1,1, 0, 1);
+   drawGround(7.5, 0.1, 7.5, 0);
+   int i;
 
    //Draw several instances of wind turbines
-   drawFan( 0,   0, -2.4, 1.0*.016, 0,   1.0, 0);
-   drawFan(-.16,  0,  1.6, 0.5*.016, 0,  3.0, 0);
-   drawFan( 1.6, 0, -.16,  0.7*.016, 0,   1.0, 0);
-   drawFan( 1.12,  0,  2.4, 1.5*.016, 0,   1.0, rot[2]);
-   drawFan(-1.6, 0, -1.6, 0.6*.016, 0,   2.0, rot[3]);
-   drawFan(-1.92, 0,  1.92, 1.0*.016, 0,   1.0, rot[4]);
-   drawFan( 0,   0,  0,   1.0*.016, 0,   1.0, rot[5]);
-   drawFan(-0.8,  0, -0.8,  1.0*.016, 0,   1.0, rot[6]);  
+   for (i = 0; i < NUM_TURBINES; i++) {
+      drawFan(turbine[i]);
+   }   
 
-   //Draw 2 instances of satellite dishes
-   drawDish(2.4,0,-2.4 ,10*0.016, 0);
-   drawDish(-3.2, 0, -3.2, 15*0.016, 90);
-   //drawDish(0,0,0, 15*.016, 0);
+   int temp = 0;
+   if(wind) {
+      for (i = 0; i < NUM_TURBINES; i++)
+      {
+         if (thetaWind > turbine[i].yRot)
+            turbine[i].yRot += 1;
+         else if (thetaWind < turbine[i].yRot)
+            turbine[i].yRot -= 1;
 
-   //drawCylinderFinal(.5, 1, 2, 0, 0, 0, 1);
-  // drawCylinder(.5, 1, 2, 0, 0, 0);
-  // drawDish(0,0,0, 10*0.016, 0);
+         turbine[i].yRot = turbine[i].yRot % 360;
+
+      }
+   }
+/*
+   if(speedWind > 56) {
+      for(i = 0; i < NUM_TURBINES; i++)
+      {
+         if(turbine[i].thetaFeather < 90)
+      }
+   }
+*/   
+   if(wind) {
+      glPushMatrix();
+      glRotatef(thetaWind, 0, 1, 0);
+      DrawParticles();
+      glPopMatrix();
+   }
+
+   if(windChange) {
+      for (i = 0; i < NUM_TURBINES; i++) {
+         if (turbine[i].yRot == thetaWind)
+            temp += 1;
+      }
+
+      if (temp == 0)
+         windChange = 0;
+
+
+   }
+
+   if(wind) {
+      for(i = 0; i < NUM_TURBINES; i++) {
+         if (speedWind > 9 && speedWind < 56)
+         {
+            double wSpeed;
+            if (speedWind < 34)
+               wSpeed = speedWind * 0.44704;
+            else
+               wSpeed = 34 * 0.44704;
+
+            double radius = 44 * turbine[i].size;
+            double powerCoeff = 0.3;
+            double area = 3.14159 * (radius * radius);
+            double airDensity = 1.0;
+            //Covert to m/s
+            turbine[i].energyOutput = 0.5 * airDensity * area * (wSpeed * wSpeed * wSpeed) * powerCoeff;
+            turbine[i].energyOutput /= 1000000;
+         }
+         else
+            turbine[i].energyOutput = 0;
+      }
+   }
+
+   glPushAttrib(GL_ENABLE_BIT);
+
    glDisable(GL_LIGHTING);
+
+   glEnable(GL_STENCIL_TEST);
+
+   glStencilFunc(GL_ALWAYS,1,0xFFFFFFFF);
+
+   glStencilOp(GL_KEEP,GL_KEEP,GL_REPLACE);
+
+   glDepthMask(0);
+   glColorMask(0,0,0,0);
+
+   glPushMatrix();
+   ShadowProjection(Position, E, N);
+   for (i = 0; i < NUM_TURBINES; i++) {
+      drawFan(turbine[i]);
+   }   
+
+   glPopMatrix();
+
+   glDepthMask(1);
+   glColorMask(1,1,1,1);
+
+   glStencilFunc(GL_LESS,0,0xFFFFFFFF);
+
+   glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+   glEnable(GL_BLEND);
+   glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+   glColor4f(0,0,0,0.5);
+
+   glBegin(GL_QUADS);
+      glVertex3f(-Dfloor,Yfloor,-Dfloor);
+      glVertex3f(+Dfloor,Yfloor,-Dfloor);
+      glVertex3f(+Dfloor,Yfloor,+Dfloor);
+      glVertex3f(-Dfloor,Yfloor,+Dfloor);
+   glEnd();
+
+   glPopAttrib();
 
    //  White
    glColor3f(1,1,1);
@@ -751,29 +1052,25 @@ void display()
    Print("Z");
    }
 
-
-   //  Five pixels from the lower left corner of the window
-/*   glWindowPos2i(5,5);
-   //  Print the text string
-   Print("Angle=%d,%d",th,ph);
-
-   glWindowPos2i(160, 5);
-   if (mode == 1) {
-      Print("Mode= Perspective");
-      glWindowPos2i(350, 5);
-      Print("Fov=%d", fov); }
-   else if (mode == 0)
-      Print("Mode= Orthogonal");
-*/
    glWindowPos2i(5,5);
-   Print("Angle=%d,%d  Dim=%.1f FOV=%d Projection=%s Light=%s",
-     th,ph,dim,fov,mode?"Perpective":"Orthogonal",light?"On":"Off");
+   Print("Angle=%0.f,%.0f  Dim=%.1f FOV=%d Projection=%s Light=%s",
+     rotx,roty,dim,fov,mode?"Perpective":"Orthogonal",light?"On":"Off");
+
    if (light)
    {
       glWindowPos2i(5,45);
-      Print("Model=%s LocalViewer=%s Distance=%d Elevation=%.1f",smooth?"Smooth":"Flat",local?"On":"Off",distance,ylight);
+      //Print("Model=%s LocalViewer=%s Distance=%d Elevation=%.1f",smooth?"Smooth":"Flat",local?"On":"Off",distance,ylight);
+      int temp2 = thetaWind % 360;
+      glColor3f(1,1,1);
+      Print("Wind Angle =%d Wind Speed = %0.f Spin: %0.f", thetaWind, speedWind, spin);
       glWindowPos2i(5,25);
-      Print("Ambient=%d  Diffuse=%d Specular=%d Emission=%d Shininess=%.0f",ambient,diffuse,specular,emission,shinyvec[0]);
+      Print("Energy Turbine: T0=%.1fMW\tT1=%.1fMW\t T2=%.1fMW\tT3=%.1fMW\tT4=%.1fMW\t T5=%.1fMW\tT6=%.1fMW\tT7=%.1fMW\tT8=%.1fMW", 
+                                                      turbine[0].energyOutput, turbine[1].energyOutput,
+                                                      turbine[2].energyOutput,turbine[3].energyOutput,
+                                                      turbine[4].energyOutput,turbine[5].energyOutput,
+                                                      turbine[6].energyOutput,turbine[7].energyOutput,
+                                                      turbine[8].energyOutput);
+      //Print("Ambient=%d  Diffuse=%d Specular=%d Emission=%d Shininess=%.0f",ambient,diffuse,specular,emission,shinyvec[0]);
    }
    ErrCheck("display");
 
@@ -782,15 +1079,73 @@ void display()
    glFlush();
    //  Make the rendered scene visible
    glutSwapBuffers();
-}
+} 
 
 void idle()
 {
-   double t = glutGet(GLUT_ELAPSED_TIME)/1000.0;
-   zh = fmod(90*t,360);
+   double t = glutGet(GLUT_ELAPSED_TIME)/5000.0;
+   zh = fmod(180*t,360);
 
-   if (moveLight)
-      zht = fmod(90*t,360);
+  // if (moveLight)
+   //   zht = fmod(90*t,360);
+
+   int i;
+/*
+   //if (wind > 55)
+      // Feather == true
+
+   if (speed > 360)
+      speed = 360;
+   if (speed < 0)
+      speed = 0;
+
+   if(speed >= 400 && speedWind == 0)
+      spin -= 1;
+   else if(speed >= 400)
+      spin = spin + 4;
+   else
+      spin = spin + speed / 100;
+*/
+      if (speedWind >= 8 && speedWind < 56)
+         speed += 0.9;
+
+      if(speedWind >= 56 && speedWind < 65)
+         speed -= 1.5;
+
+      if(speedWind >=65)
+         speed -= 2.5;
+
+      if(speedWind < 8 && speed > 0)
+         speed -= 0.5;
+
+  // if(! wind && speed > 0)
+   //   speed -= 0.5;
+
+      if( speed < 0)
+         speed = 0;
+
+      if(speed >= 400) {
+         speed = 400;
+         spin = spin + 4;
+      }
+      else 
+         spin = spin + speed / 100;   
+ 
+   // update the frame time
+   SortFrameTimer();
+   int val = 10;
+   // create a new particle every frame
+   if(speedWind > 0)
+      val = rand()%(5 * (int) speedWind);
+
+   for(i = 0; i < val; i++)
+      NewParticle();
+
+   // update the particle simulation
+   UpdateParticles(FrameTime());
+
+   // remove any dead particles
+   RemoveDeadParticles();   
 
    glutPostRedisplay();
 }
@@ -810,16 +1165,42 @@ void special(int key,int x,int y)
    else if (key == GLUT_KEY_UP)
       ph += 5;
    //  Down arrow key - decrease elevation by 5 degrees
-   else if (key == GLUT_KEY_DOWN)
+   else if (key == GLUT_KEY_DOWN && ph > 10)
       ph -= 5;
 
-   else if (key == GLUT_KEY_PAGE_UP)
-      zoom += 0.1;
-   else if (key == GLUT_KEY_PAGE_DOWN)
-      zoom -= 0.1;
+   else if (key == GLUT_KEY_PAGE_UP) {
+      thetaWind += 5;
+      thetaWind = thetaWind % 360;
+      if(wind)
+         windChange = 1;
+   }
+   else if (key == GLUT_KEY_PAGE_DOWN) {
+      thetaWind -= 5;
+      thetaWind = thetaWind % 360;
+      if(wind)
+         windChange = 1;      
+   }
+   else if (key == GLUT_KEY_HOME && speedWind < 80) {
+      speedWind += 2;
+      fanDir = 1;
+      wind = 1;
+      windChange = 1;
+      fog_density += 0.001;
+   }
+   else if (key == GLUT_KEY_END && speedWind > 0) {
+      speedWind -= 2;
+      fanDir = -1;
+      windChange = 1;
+      if(speedWind == 0)
+         wind = 0;
+
+      fog_density -= 0.001;
+
+   }
    //  Keep angles to +/-360 degrees
    th %= 360;
    ph %= 360;
+   //thetaWind %= 360;
    //  Tell GLUT it is necessary to redisplay the scene
    Project(mode?fov:0,asp,dim);
    glutPostRedisplay();
@@ -829,6 +1210,8 @@ void key(unsigned char ch, int x, int y)
 {
    if (ch == 27)
       exit(0);
+   //else if (ch == 'w' || ch == 'W')
+    //  wind = 1 - wind;
    else if (ch == '0')
       th = ph = 0;
    else if (ch == 'm' || ch == 'M')
@@ -886,6 +1269,55 @@ void key(unsigned char ch, int x, int y)
    glutPostRedisplay();
 }
 
+void Motion(int x,int y)
+{
+   int diffx=x-lastx;
+   int diffy=y-lasty;
+   lastx=x;
+   lasty=y;
+
+   if( Buttons[0] && Buttons[1] )
+   {
+      zoom2 -= (float) 0.05f * diffx;
+   }
+   else
+      if( Buttons[0])
+      {
+
+         if (rotx > 5 && rotx < 175)
+            rotx += (float) 0.5f * diffy;
+         else if ((rotx <= 5 && diffy > 0) || (rotx >= 175 && diffy < 0))
+            rotx += (float) 0.5f * diffy;
+
+         roty += (float) 0.5f * diffx;    
+      }
+      else
+         if( Buttons[1] )
+         {
+            tx += (float) 0.05f * diffx;
+            ty -= (float) 0.05f * diffy;
+         }
+         glutPostRedisplay();
+}
+
+void Mouse(int b, int s, int x, int y)
+{
+   lastx = x;
+   lasty = y;
+
+   switch(b)
+   {
+      case GLUT_LEFT_BUTTON:
+         Buttons[0] = ((GLUT_DOWN==s)?1:0);
+         break;
+      case GLUT_RIGHT_BUTTON:
+         Buttons[1] = ((GLUT_DOWN==s)?1:0);
+      default:
+         break;
+   }
+   glutPostRedisplay();
+}
+
 /*
  *  GLUT calls this routine when the window is resized
  */
@@ -903,17 +1335,40 @@ void reshape(int width,int height)
  */
 int main(int argc,char* argv[])
 {
-   int i;
 
-   //Give random positions for turbine orientations
-   //Stored in global array
-   for(i = 0; i < 10; i++)
-      rot[i] = rand() % 90;
+   turbine[0].x = -4; turbine[0].y = 0; turbine[0].z = -4;
+   turbine[0].size = 1.0;
+   turbine[0].yRot = 0.0;
+   turbine[1].x = -3; turbine[1].y = 0; turbine[1].z = -2;
+   turbine[1].size = .9;
+   turbine[1].yRot = 30.0;
+   turbine[2].x = -2; turbine[2].y = 0; turbine[2].z = 0;
+   turbine[2].size = .8;
+   turbine[2].yRot = 60.0;
+   turbine[3].x = -1; turbine[3].y = 0; turbine[3].z = 2;
+   turbine[3].size = .7;
+   turbine[3].yRot = 90.0;
+   turbine[4].x = 0; turbine[4].y = 0; turbine[4].z = 5;
+   turbine[4].size = .6;
+   turbine[4].yRot = 120;
+   turbine[5].x = 1; turbine[5].y = 0; turbine[5].z = 2;
+   turbine[5].size = .7;
+   turbine[5].yRot = 150.0;
+   turbine[6].x = 2; turbine[6].y = 0; turbine[6].z = 0;
+   turbine[6].size = .8;
+   turbine[6].yRot = 180.0;
+   turbine[7].x = 3; turbine[7].y = 0; turbine[7].z = -2;
+   turbine[7].size = .9;
+   turbine[7].yRot = 210;
+   turbine[8].x = 4; turbine[8].y = 0; turbine[8].z = -4;
+   turbine[8].size = 1.0;
+   turbine[8].yRot = 240;
+
 
    //  Initialize GLUT and process user parameters
    glutInit(&argc,argv);
    //  Request double buffered, true color window with Z buffering at 600x600
-   glutInitWindowSize(600,600);
+   glutInitWindowSize(1024,600);
    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
    //  Create the window
    glutCreateWindow("Assignment 3 - Thomas Spooner");
@@ -925,14 +1380,19 @@ int main(int argc,char* argv[])
    glutReshapeFunc(reshape);
    //  Tell GLUT to call "special" when an arrow key is pressed
    glutSpecialFunc(special);
-
+   glutMouseFunc(Mouse);
+   glutMotionFunc(Motion);
    glutKeyboardFunc(key);
    //  Tell GLUT to call "key" when a key is pressed
    //  Pass control to GLUT so it can interact with the user
 
-   texture[0] = LoadTexBMP("grass.bmp");
-   texture[1] = LoadTexBMP("sphere.bmp");
-   texture[2] = LoadTexBMP("metal.bmp");
+   texture[0] = LoadTexBMP("Textures/grass.bmp");
+   texture[1] = LoadTexBMP("Textures/sphere.bmp");
+   texture[2] = LoadTexBMP("Textures/metal.bmp");
+   testSky     = LoadTexBMP("Textures/skybox_texture.bmp");
+
+
+   obj        = LoadOBJ("wing.obj");
    glutMainLoop();
    return 0;
 }

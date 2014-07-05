@@ -1,0 +1,40 @@
+Build the executable running: make
+Clean the files using: make clean
+
+Execute the program using: ./lighting
+
+Controls: 
+
+Camera: Click and hold left mouse and drag around.
+
+Increase Wind: Page up, page down
+Change wind direction: Home/End Buttons
+
+To Do:
+
+Right now I have a basic particle system to represent the wind. The windmills can 
+spin at seperate speeds based on the radius of the blades.
+
+* Need to change particle system orientation based on wind direction
+    - Maybe clean it up a little so that it stands out better in the scene
+      and also increase the speed or volume of particles when speed is increased
+
+* Retexture the skybox, right now uses the thunderbirds one
+
+* Limit camera rotation to above ground
+
+* Implement way to record the energy output per turbine
+
+* Add foliage. Have some tree and rock models I'd like to use
+
+* Permanent light system. I don't want the light orbiting the scene unless you
+    want it to
+
+* Blade feathering. THis should be easy, just a rotation when conditions are met.
+
+* Finish blade implementation
+    * Stop at wind max speed / and feather
+
+* Click on turbine to get info?
+
+* Shadows if I can get to it in time
