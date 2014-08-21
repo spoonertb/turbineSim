@@ -3,6 +3,8 @@ turbineSim
 
 Final Project for CSCI 4229 - Computer Graphics
 
+Wind Turbine/Particle Simulator written in C and OpenGL
+
 Thomas Spooner
 thsp2343 - thomas.spooner@colorado.edu
 
@@ -12,9 +14,7 @@ Run make clean and make to build and clean the code.
 
 Controls:
 
-Arrow Keys: Rotate View
-
-+/- Keys: Change FOV of world --> only in perspective
+Left mouse click and drag rotates the world view
 
 m key: change orthogonal/perspective views
 
